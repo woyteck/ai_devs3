@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/joho/godotenv"
+	"woyteck.pl/ai_devs3/internal/di"
 	"woyteck.pl/ai_devs3/internal/openai"
 )
 
@@ -15,8 +15,12 @@ func main() {
 		log.Println(".env file not found, using environment variables instead")
 	}
 
-	key := os.Getenv("OPENAI_API_KEY")
-	llm := openai.NewOpenAI(key)
+	container := di.NewContainer(di.Services)
+
+	llm, ok := container.Get("openai").(*openai.OpenAI)
+	if !ok {
+		panic("openai factory failed")
+	}
 
 	messages := []openai.Message{
 		{
