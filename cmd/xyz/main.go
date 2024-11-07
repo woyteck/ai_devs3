@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -21,17 +22,21 @@ func main() {
 		log.Println(".env file not found, using environment variables instead")
 	}
 
+	url := os.Getenv("S01E01_URL")
+	username := os.Getenv("S01E01_USERNAME")
+	password := os.Getenv("S01E01_PASSWORD")
+
 	container := di.NewContainer(di.Services)
 
-	question := getQuestion(container)
+	question := getQuestion(container, url)
 	fmt.Println(question)
 	answer := answerQuestion(container, question)
 	fmt.Println(answer)
 
-	postVariables("https://xyz.ag3nts.org/", "tester", "574e112a", answer)
+	postVariables(url, username, password, answer)
 }
 
-func getQuestion(container *di.Container) string {
+func getQuestion(container *di.Container, url string) string {
 	scraper, ok := container.Get("scraper").(*firecrawl.FirecrawlApp)
 	if !ok {
 		panic("scraper factory failed")
@@ -41,7 +46,7 @@ func getQuestion(container *di.Container) string {
 		IncludeTags: []string{"p"},
 		Formats:     []string{"html", "markdown"},
 	}
-	results, err := scraper.ScrapeURL("https://xyz.ag3nts.org/", crawlParams)
+	results, err := scraper.ScrapeURL(url, crawlParams)
 	if err != nil {
 		panic(err)
 	}
@@ -68,6 +73,7 @@ func findHumanQuestion(n *html.Node) string {
 			return result
 		}
 	}
+
 	return ""
 }
 
@@ -88,6 +94,10 @@ func answerQuestion(container *di.Container, question string) string {
 		},
 	}
 	resp := llm.GetCompletionShort(messages, "gpt-3.5-turbo")
+	if len(resp.Choices) == 0 {
+		panic("no choices in response from LLM")
+	}
+
 	return resp.Choices[0].Message.Content
 }
 
