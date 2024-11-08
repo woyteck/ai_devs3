@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/mendableai/firecrawl-go"
+	"github.com/redis/go-redis/v9"
 	"woyteck.pl/ai_devs3/internal/openai"
 	"woyteck.pl/ai_devs3/internal/qdrant"
 )
@@ -22,5 +23,12 @@ var Services = map[string]ServiceFactoryFn{
 		}
 
 		return fc
+	},
+	"redis": func(c *Container) any {
+		return redis.NewClient(&redis.Options{
+			Addr:     os.Getenv("REDIS_HOST"),
+			Password: os.Getenv("REDIS_PASSWORD"),
+			DB:       0,
+		})
 	},
 }
