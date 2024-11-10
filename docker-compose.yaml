@@ -40,6 +40,14 @@ services:
     command: redis-server --save 20 1 --loglevel warning --requirepass ${REDIS_PASSWORD}
     volumes:
       - cache:/data
+  llama:
+    image: ollama/ollama
+    container_name: ai_devs3_llama
+    restart: always
+    ports:
+      - '11434:11434'
+    volumes:
+      - ./var/llama_images:/root/.ollama
 volumes:
   qdrant_data:
   database_postgres:

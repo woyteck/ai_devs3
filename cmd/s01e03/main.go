@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+	"woyteck.pl/ai_devs3/internal/aidevs"
 	"woyteck.pl/ai_devs3/internal/di"
 	"woyteck.pl/ai_devs3/internal/openai"
 )
@@ -46,40 +46,20 @@ func main() {
 		log.Println(".env file not found, using environment variables instead")
 	}
 
+	container := di.NewContainer(di.Services)
+
 	baseUrl := os.Getenv("CENTRALA_BASEURL")
-	answerUrl := os.Getenv("S01E03_URL")
 	key := os.Getenv("AI_DEVS_KEY")
 
 	url := fmt.Sprintf("%s/data/%s/json.txt", baseUrl, key)
 	message := fetchJson(url)
 	corrected := correct(message, key)
 
-	sendAnswer(key, answerUrl, corrected)
-}
-
-func sendAnswer(key, url string, message Message) {
-	req := Answer{
-		Task:   "JSON",
-		ApiKey: key,
-		Answer: message,
+	responder, ok := container.Get("responder").(*aidevs.Responder)
+	if !ok {
+		panic("responder factory failed")
 	}
-
-	json, err := json.Marshal(req)
-	if err != nil {
-		panic(err)
-	}
-
-	response, err := http.Post(url, "application/json", bytes.NewBuffer(json))
-	if err != nil {
-		panic(err)
-	}
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(string(body))
+	responder.SendAnswer(corrected, "JSON")
 }
 
 func correct(message *Message, key string) Message {
