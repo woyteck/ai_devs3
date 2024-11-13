@@ -39,6 +39,7 @@ func (r *Responder) SendAnswer(message any, taskName string) {
 	}
 
 	fmt.Println(bytes.NewBuffer(json))
+
 	response, err := http.Post(r.url, "application/json", bytes.NewBuffer(json))
 	if err != nil {
 		panic(err)
@@ -49,5 +50,6 @@ func (r *Responder) SendAnswer(message any, taskName string) {
 		panic(err)
 	}
 
+	fmt.Println(response.StatusCode)
 	fmt.Println(string(body))
 }

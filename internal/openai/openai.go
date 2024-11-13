@@ -322,12 +322,12 @@ func (o *OpenAI) GetEmbedding(input string, model string) []float64 {
 	return result.Data[0].Embedding
 }
 
-func (o *OpenAI) GetTranscription(file []byte, model string) string {
+func (o *OpenAI) GetTranscription(file []byte, model string, format string) string {
 	url := "https://api.openai.com/v1/audio/transcriptions"
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	filePart, _ := writer.CreateFormFile("file", "file.mp3")
+	filePart, _ := writer.CreateFormFile("file", "file."+format)
 	filePart.Write(file)
 	writer.WriteField("model", model)
 	writer.Close()
@@ -345,6 +345,13 @@ func (o *OpenAI) GetTranscription(file []byte, model string) string {
 	}
 
 	fmt.Println(response.StatusCode)
+	if response.StatusCode >= 400 {
+		responseBody, err := io.ReadAll(response.Body)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(responseBody))
+	}
 
 	defer response.Body.Close()
 
