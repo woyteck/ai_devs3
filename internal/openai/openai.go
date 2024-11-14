@@ -363,3 +363,64 @@ func (o *OpenAI) GetTranscription(file []byte, model string, format string) stri
 
 	return result.Text
 }
+
+type CreateImageRequest struct {
+	Model          string `json:"model,omitempty"`
+	Prompt         string `json:"prompt"`
+	N              int    `json:"n,omitempty"`
+	Quality        string `json:"quality,omitempty"`
+	ResponseFormat string `json:"response_format,omitempty"`
+	Size           string `json:"size,omitempty"`
+}
+
+type ImageResult struct {
+	Url string `json:"url"`
+}
+
+type CreateImageResponse struct {
+	Created int           `json:"created"`
+	Data    []ImageResult `json:"data"`
+}
+
+func (o *OpenAI) CreateImageShort(prompt string) *CreateImageResponse {
+	request := CreateImageRequest{
+		Model:  "dall-e-3",
+		Prompt: prompt,
+		N:      1,
+		Size:   "1024x1024",
+	}
+
+	return o.CreateImage(request)
+}
+
+func (o *OpenAI) CreateImage(request CreateImageRequest) *CreateImageResponse {
+	url := "https://api.openai.com/v1/images/generations"
+
+	postBody, _ := json.Marshal(request)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(postBody))
+	if err != nil {
+		log.Fatalf("Error occured %v", err)
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %v", o.key))
+	req.Header.Add("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatalf("Error occured %v", err)
+	}
+
+	defer response.Body.Close()
+	if response.StatusCode >= 400 {
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			log.Fatal("Coult not read response")
+		}
+		fmt.Println(string(body))
+	}
+
+	var result *CreateImageResponse
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		log.Fatal("Can not unmarshall JSON")
+	}
+
+	return result
+}
