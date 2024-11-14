@@ -344,7 +344,6 @@ func (o *OpenAI) GetTranscription(file []byte, model string, format string) stri
 		log.Fatalf("Error occured %v", err)
 	}
 
-	fmt.Println(response.StatusCode)
 	if response.StatusCode >= 400 {
 		responseBody, err := io.ReadAll(response.Body)
 		if err != nil {
