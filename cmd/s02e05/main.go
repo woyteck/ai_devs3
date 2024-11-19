@@ -14,7 +14,6 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
-	"woyteck.pl/ai_devs3/internal/di"
 	"woyteck.pl/ai_devs3/internal/openai"
 )
 
@@ -29,27 +28,51 @@ type ScrapeResults struct {
 	Audio      []string
 }
 
+type Question struct {
+	Index int
+	Text  string
+}
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Println(".env file not found, using environment variables instead")
 	}
 
-	container := di.NewContainer(di.Services)
-	llm, ok := container.Get("openai").(*openai.OpenAI)
-	if !ok {
-		panic("openai factory failed")
+	// container := di.NewContainer(di.Services)
+	// llm, ok := container.Get("openai").(*openai.OpenAI)
+	// if !ok {
+	// 	panic("openai factory failed")
+	// }
+
+	// cache, ok := container.Get("redis").(*redis.Client)
+	// if !ok {
+	// 	panic("openai factory failed")
+	// }
+
+	// url := fmt.Sprintf("%s/dane/arxiv-draft.html", os.Getenv("CENTRALA_BASEURL"))
+	// results := scrapePage(url)
+	// normalized := normalizeData(llm, cache, results)
+	// fmt.Println(normalized)
+
+	questions := fetchQuestions()
+	fmt.Println(questions)
+}
+
+func fetchQuestions() []Question {
+	url := fmt.Sprintf("%s/data/%s/arxiv.txt", os.Getenv("CENTRALA_BASEURL"), os.Getenv("AI_DEVS_KEY"))
+
+	response, err := http.Get(url)
+	contents, err := io.ReadAll(response.Body)
+	if err != nil {
+		panic(err)
 	}
 
-	cache, ok := container.Get("redis").(*redis.Client)
-	if !ok {
-		panic("openai factory failed")
-	}
+	fmt.Println(string(contents))
 
-	url := fmt.Sprintf("%s/dane/arxiv-draft.html", os.Getenv("CENTRALA_BASEURL"))
-	results := scrapePage(url)
-	normalized := normalizeData(llm, cache, results)
-	fmt.Println(normalized)
+	questions := []Question{}
+
+	return questions
 }
 
 func normalizeData(llm *openai.OpenAI, cache *redis.Client, data ScrapeResults) []string {
