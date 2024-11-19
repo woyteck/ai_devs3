@@ -15,6 +15,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
+	"woyteck.pl/ai_devs3/internal/aidevs"
 	"woyteck.pl/ai_devs3/internal/di"
 	"woyteck.pl/ai_devs3/internal/openai"
 )
@@ -25,14 +26,20 @@ type Image struct {
 }
 
 type ScrapeResults struct {
+	Sections []*Section
+}
+
+type Section struct {
+	Title      string
 	Paragraphs []string
 	Images     []Image
 	Audio      []string
 }
 
 type Question struct {
-	Index int
-	Text  string
+	Index  int
+	Text   string
+	Answer string
 }
 
 func main() {
@@ -40,9 +47,6 @@ func main() {
 	if err != nil {
 		log.Println(".env file not found, using environment variables instead")
 	}
-
-	questions := fetchQuestions()
-	fmt.Println(questions)
 
 	container := di.NewContainer(di.Services)
 	llm, ok := container.Get("openai").(*openai.OpenAI)
@@ -57,12 +61,49 @@ func main() {
 
 	url := fmt.Sprintf("%s/dane/arxiv-draft.html", os.Getenv("CENTRALA_BASEURL"))
 	results := scrapePage(url)
-	normalized := normalizeData(llm, cache, results)
-	fmt.Println(normalized)
 
+	normalized := normalizeData(llm, cache, results)
+
+	response := map[string]string{}
+	for _, question := range fetchQuestions() {
+		answer := answerQuestion(llm, question.Text, strings.Join(normalized, "\n\n"))
+		question.Answer = answer
+		index := fmt.Sprintf("%02d", question.Index)
+		response[index] = question.Answer
+	}
+
+	responder, ok := container.Get("responder").(*aidevs.Responder)
+	if !ok {
+		panic("responder factory failed")
+	}
+	responder.SendAnswer(response, "arxiv")
 }
 
-func fetchQuestions() []Question {
+func answerQuestion(llm *openai.OpenAI, question string, context string) string {
+	messages := []openai.Message{
+		{
+			Role:    "system",
+			Content: context,
+		},
+		{
+			Role:    "system",
+			Content: "I always answer with one sentence.",
+		},
+		{
+			Role:    "user",
+			Content: question,
+		},
+	}
+
+	resp := llm.GetCompletionShort(messages, "gpt-4-turbo")
+	if len(resp.Choices) == 0 {
+		panic("no choices in response from LLM")
+	}
+
+	return resp.Choices[0].Message.Content
+}
+
+func fetchQuestions() []*Question {
 	url := fmt.Sprintf("%s/data/%s/arxiv.txt", os.Getenv("CENTRALA_BASEURL"), os.Getenv("AI_DEVS_KEY"))
 
 	response, err := http.Get(url)
@@ -71,8 +112,7 @@ func fetchQuestions() []Question {
 		panic(err)
 	}
 
-	fmt.Println(string(contents))
-	questions := []Question{}
+	questions := []*Question{}
 
 	lines := strings.Split(string(contents), "\n")
 	for _, line := range lines {
@@ -91,7 +131,7 @@ func fetchQuestions() []Question {
 			Text:  q[1],
 		}
 
-		questions = append(questions, question)
+		questions = append(questions, &question)
 	}
 
 	return questions
@@ -99,18 +139,27 @@ func fetchQuestions() []Question {
 
 func normalizeData(llm *openai.OpenAI, cache *redis.Client, data ScrapeResults) []string {
 	results := []string{}
-	for _, text := range data.Paragraphs {
-		results = append(results, text)
-	}
 
-	for _, audio := range data.Audio {
-		transcript := transcriptAudio(llm, cache, audio)
-		results = append(results, transcript)
-	}
+	for _, section := range data.Sections {
+		fragments := []string{}
 
-	for _, image := range data.Images {
-		description := describeImage(llm, cache, image)
-		results = append(results, description)
+		fragments = append(fragments, section.Title)
+
+		for _, text := range section.Paragraphs {
+			fragments = append(fragments, text)
+		}
+
+		for _, audio := range section.Audio {
+			transcript := transcriptAudio(llm, cache, audio)
+			fragments = append(fragments, transcript)
+		}
+
+		for _, image := range section.Images {
+			description := describeImage(llm, cache, image)
+			fragments = append(fragments, description)
+		}
+
+		results = append(results, strings.Join(fragments, "\n"))
 	}
 
 	return results
@@ -124,8 +173,6 @@ func describeImage(llm *openai.OpenAI, cache *redis.Client, image Image) string 
 	var description string
 	description, err := cache.Get(ctx, imageUrl).Result()
 	if err != nil {
-		fmt.Println("cache miss")
-
 		imageResponse, err := http.Get(imageUrl)
 		fileContents, err := io.ReadAll(imageResponse.Body)
 		if err != nil {
@@ -139,7 +186,7 @@ func describeImage(llm *openai.OpenAI, cache *redis.Client, image Image) string 
 				Content: []openai.Content{
 					{
 						Type: "text",
-						Text: "I describe what's on the image.",
+						Text: "I describe what's on the image. I include the city name of where the photo it was taken, if I can.",
 					},
 				},
 			},
@@ -159,7 +206,7 @@ func describeImage(llm *openai.OpenAI, cache *redis.Client, image Image) string 
 				},
 			},
 		}
-		completions := llm.GetImageCompletionShort(messages, "gpt-4-turbo")
+		completions := llm.GetImageCompletionShort(messages, "gpt-4o")
 
 		if len(completions.Choices) == 0 {
 			panic("no completions returned by LLM")
@@ -168,8 +215,6 @@ func describeImage(llm *openai.OpenAI, cache *redis.Client, image Image) string 
 		description = completions.Choices[0].Message.Content
 
 		cache.Set(ctx, imageUrl, description, time.Hour)
-	} else {
-		fmt.Println("cache hit")
 	}
 
 	return description
@@ -183,8 +228,6 @@ func transcriptAudio(llm *openai.OpenAI, cache *redis.Client, url string) string
 	var transcript string
 	transcript, err := cache.Get(ctx, audioUrl).Result()
 	if err != nil {
-		fmt.Println("cache miss")
-
 		audioResponse, err := http.Get(audioUrl)
 		fileContents, err := io.ReadAll(audioResponse.Body)
 		if err != nil {
@@ -194,8 +237,6 @@ func transcriptAudio(llm *openai.OpenAI, cache *redis.Client, url string) string
 		transcript = llm.GetTranscription(fileContents, "whisper-1", "mp3")
 
 		cache.Set(ctx, audioUrl, transcript, time.Hour)
-	} else {
-		fmt.Println("cache hit")
 	}
 
 	return transcript
@@ -219,29 +260,42 @@ func scrapePage(url string) ScrapeResults {
 
 	results := ScrapeResults{}
 
-	doc.Find("p").Each(func(i int, s *goquery.Selection) {
-		text := s.Text()
-		results.Paragraphs = append(results.Paragraphs, text)
-	})
+	var section *Section
+	isSectionExists := false
+	doc.Find("h1, h2, div, p, figure, a").Each(func(i int, s *goquery.Selection) {
+		if s.Is("h2") {
+			section = &Section{}
+			results.Sections = append(results.Sections, section)
 
-	doc.Find("figure").Each(func(i int, s *goquery.Selection) {
-		image := Image{}
-
-		img := s.Find("img")
-		if src, exists := img.Attr("src"); exists {
-			image.Url = src
+			section.Title = s.Text()
+			isSectionExists = true
 		}
 
-		caption := s.Find("figcaption").Text()
-		image.Caption = caption
+		if !isSectionExists {
+			return
+		}
 
-		results.Images = append(results.Images, image)
-	})
+		if s.Is("p") {
+			section.Paragraphs = append(section.Paragraphs, s.Text())
+		}
 
-	doc.Find("a").Each(func(i int, s *goquery.Selection) {
-		link, exists := s.Attr("href")
-		if exists && strings.Contains(link, ".mp3") {
-			results.Audio = append(results.Audio, link)
+		if s.Is("figure") {
+			image := Image{}
+			img := s.Find("img")
+			if src, exists := img.Attr("src"); exists {
+				image.Url = src
+			}
+			caption := s.Find("figcaption").Text()
+			image.Caption = caption
+
+			section.Images = append(section.Images, image)
+		}
+
+		if s.Is("a") {
+			link, exists := s.Attr("href")
+			if exists && strings.Contains(link, ".mp3") {
+				section.Audio = append(section.Audio, link)
+			}
 		}
 	})
 
