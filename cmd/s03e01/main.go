@@ -36,32 +36,22 @@ func main() {
 	url := fmt.Sprintf("%s/dane/pliki_z_fabryki.zip", os.Getenv("CENTRALA_BASEURL"))
 	reports, facts := fetchData(url)
 
-	// fmt.Println("REPORTS:")
-	// for _, report := range reports {
-	// 	fmt.Println(report)
-	// }
-
-	// fmt.Println("")
-	// fmt.Println("")
-
-	// fmt.Println("FACTS:")
-	// for _, fact := range facts {
-	// 	fmt.Println(fact)
-	// }
-
 	context := []string{}
 	for _, fact := range facts {
 		context = append(context, fact.Contents)
 	}
 
+	// fmt.Println(strings.Join(context, "\n"))
+	// return
+
 	answer := map[string]string{}
 	for _, report := range reports {
-		fmt.Println("GENERATING KEYWORDS FOR:")
+		fmt.Println("REPORT:")
 		fmt.Println(report)
 
 		keywords := generateKeywords(llm, strings.Join(context, "\n"), report.Contents)
 		answer[report.Name] = strings.Join(keywords, ", ")
-		fmt.Println("KEYWORDS:" + strings.Join(keywords, ", "))
+		fmt.Println("KEYWORDS: " + strings.Join(keywords, ", "))
 		time.Sleep(time.Second)
 	}
 
@@ -74,16 +64,19 @@ func main() {
 
 func generateKeywords(llm *openai.OpenAI, context string, report string) []string {
 	messages := []openai.Message{
-		{
-			Role:    "system",
-			Content: context,
-		},
+		// {
+		// 	Role:    "system",
+		// 	Content: context,
+		// },
 		{
 			Role: "system",
 			Content: `Generuję listę słów kluczowych w formie mianownika (czyli np. "sportowiec", a nie "sportowcem", "sportowców" itp.).
-Dodaję dodatkowe słowa kluczowe na podstawie swojej wiedzy.
+Na podstawie dodatkowego kontekstu generuję dodatkowe słowa kluczowe, np jeśli w raporcie jest mowa o jakiejś osobie, to dodaję słowa kluczowe, które ją opisują.
 Zwracam tylko te słowa kluczowe, nic więcej.
-Każde słowo kluczowe w osobnej linii, bez myślników i numerów linii.`,
+Każde słowo kluczowe w osobnej linii, bez myślników i numerów linii.
+
+Dodatkowy kontekst:
+` + context,
 		},
 		{
 			Role:    "user",
