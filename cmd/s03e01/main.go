@@ -41,19 +41,21 @@ func main() {
 		context = append(context, fact.Contents)
 	}
 
-	// fmt.Println(strings.Join(context, "\n"))
-	// return
-
 	answer := map[string]string{}
 	for _, report := range reports {
 		fmt.Println("REPORT:")
 		fmt.Println(report)
 
 		keywords := generateKeywords(llm, strings.Join(context, "\n"), report.Contents)
+		keywords = append(keywords, report.Name)
+
 		answer[report.Name] = strings.Join(keywords, ", ")
 		fmt.Println("KEYWORDS: " + strings.Join(keywords, ", "))
 		time.Sleep(time.Second)
 	}
+
+	fmt.Println("")
+	fmt.Println("")
 
 	responder, ok := container.Get("responder").(*aidevs.Responder)
 	if !ok {
@@ -63,34 +65,43 @@ func main() {
 }
 
 func generateKeywords(llm *openai.OpenAI, context string, report string) []string {
-	messages := []openai.Message{
-		// {
-		// 	Role:    "system",
-		// 	Content: context,
-		// },
-		{
-			Role: "system",
-			Content: `Generuję listę słów kluczowych w formie mianownika (czyli np. "sportowiec", a nie "sportowcem", "sportowców" itp.).
-Na podstawie dodatkowego kontekstu generuję dodatkowe słowa kluczowe, np jeśli w raporcie jest mowa o jakiejś osobie, to dodaję słowa kluczowe, które ją opisują.
+	// 	systemMessage := `Generuję wyczerpującą listę słów kluczowych w formie mianownika (czyli np. "sportowiec", a nie "sportowcem", "sportowców" itp.) na podstawie podanego raportu i dodatkowej wiedzy.
+	// Nie pomijam żadnego faktu, łączę fakty.
+	// Wzbogacam listę słów kluczowych dodatkowymi, opartymi o wiedzy związanej z danym raportem.
+	// Zwracam tylko te słowa kluczowe, nic więcej.
+	// Każde słowo kluczowe w osobnej linii, bez myślników i numerów linii.
+
+	// Dodatkowa wiedza:
+	// ` + context
+
+	systemMessage := `Dla podanego tekstu generuję listę słów kluczowych w formie mianownika (czyli np. "sportowiec", a nie "sportowcem", "sportowców" itp.).
 Zwracam tylko te słowa kluczowe, nic więcej.
 Każde słowo kluczowe w osobnej linii, bez myślników i numerów linii.
 
-Dodatkowy kontekst:
-` + context,
+fakty:
+` + context
+
+	messages := []openai.Message{
+		{
+			Role:    "system",
+			Content: systemMessage,
 		},
 		{
 			Role:    "user",
 			Content: report,
 		},
 	}
-	completions := llm.GetCompletionShort(messages, "gpt-4o-mini")
+	completions := llm.GetCompletionShort(messages, "gpt-4o")
 	if len(completions.Choices) == 0 {
 		panic("no completions returned by LLM")
 	}
 
 	results := []string{}
 	for _, keyword := range strings.Split(completions.Choices[0].Message.Content, "\n") {
-		results = append(results, strings.ToLower(strings.Trim(keyword, " ")))
+		word := strings.ToLower(strings.Trim(keyword, " "))
+		if word != "" {
+			results = append(results, word)
+		}
 	}
 
 	return results
