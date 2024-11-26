@@ -40,13 +40,19 @@ func main() {
 	for _, fact := range facts {
 		context = append(context, fact.Contents)
 	}
+	for _, report := range reports {
+		context = append(context, report.Contents)
+	}
+
+	contextString := strings.Join(context, "\n")
+	contextString = strings.ReplaceAll(contextString, "agorski", "agowski")
 
 	answer := map[string]string{}
 	for _, report := range reports {
 		fmt.Println("REPORT:")
 		fmt.Println(report)
 
-		keywords := generateKeywords(llm, strings.Join(context, "\n"), report.Contents)
+		keywords := generateKeywords(llm, contextString, report.Contents)
 		keywords = append(keywords, report.Name)
 
 		answer[report.Name] = strings.Join(keywords, ", ")
@@ -65,21 +71,19 @@ func main() {
 }
 
 func generateKeywords(llm *openai.OpenAI, context string, report string) []string {
-	// 	systemMessage := `Generuję wyczerpującą listę słów kluczowych w formie mianownika (czyli np. "sportowiec", a nie "sportowcem", "sportowców" itp.) na podstawie podanego raportu i dodatkowej wiedzy.
-	// Nie pomijam żadnego faktu, łączę fakty.
-	// Wzbogacam listę słów kluczowych dodatkowymi, opartymi o wiedzy związanej z danym raportem.
-	// Zwracam tylko te słowa kluczowe, nic więcej.
-	// Każde słowo kluczowe w osobnej linii, bez myślników i numerów linii.
+	systemMessage := `<instruction>
+Dla raportu podanego przez użytkownika generuję listę słów kluczowych w formie mianownika (czyli np. "sportowiec", a nie "sportowcem", "sportowców" itp.).
+Analizuję w tym celu treści raportu i faktów, łączę fakty i na podstawie wniosków generuję słowa kluczowe.
+</instruction>
 
-	// Dodatkowa wiedza:
-	// ` + context
-
-	systemMessage := `Dla podanego tekstu generuję listę słów kluczowych w formie mianownika (czyli np. "sportowiec", a nie "sportowcem", "sportowców" itp.).
+<rules>
 Zwracam tylko te słowa kluczowe, nic więcej.
 Każde słowo kluczowe w osobnej linii, bez myślników i numerów linii.
+</rules>
 
-fakty:
-` + context
+<facts>
+` + context + `
+</facts>`
 
 	messages := []openai.Message{
 		{
